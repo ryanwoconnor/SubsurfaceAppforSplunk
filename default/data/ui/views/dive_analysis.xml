@@ -1,0 +1,204 @@
+<form>
+  <label>Dive Analysis</label>
+  <description>This dashboard allows you to get into the specifics of a given dive. You can look at dive duration, air consumed, and even a chart of your depth, pressure, and temperature recordings all in one place.</description>
+  <fieldset submitButton="false">
+    <input type="dropdown" token="country" searchWhenChanged="true">
+      <label>Country</label>
+      <fieldForLabel>country</fieldForLabel>
+      <fieldForValue>country</fieldForValue>
+      <search>
+        <query>`subsurfaceindex` tag=site | table country | dedup country</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <default>Madagascar</default>
+    </input>
+    <input type="dropdown" token="divesitename" searchWhenChanged="true">
+      <label>Dive Site</label>
+      <fieldForLabel>divesitename</fieldForLabel>
+      <fieldForValue>divesitename</fieldForValue>
+      <search>
+        <query>|inputlookup dive_site_ids.csv | search country="$country$" | dedup divesitename | table divesitename</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+    <input type="dropdown" token="date" searchWhenChanged="true">
+      <label>Dive Date</label>
+      <fieldForLabel>date</fieldForLabel>
+      <fieldForValue>date</fieldForValue>
+      <search>
+        <query>`subsurfaceindex` tag=dive country="$country$" divesitename="$divesitename$" | table date | dedup date</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+    <input type="dropdown" token="divenumber" searchWhenChanged="true">
+      <label>Dive Number</label>
+      <fieldForLabel>divenumber</fieldForLabel>
+      <fieldForValue>divenumber</fieldForValue>
+      <search>
+        <query>`subsurfaceindex` tag=dive country="$country$" divesitename="$divesitename$" date="$date$"| table divenumber</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <single>
+        <title>Dive Duration</title>
+        <search>
+          <query>`subsurfaceindex` sourcetype="subsurface" tag=dive country="$country$" divesitename="$divesitename$" date="$date$" divenumber="$divenumber$" | reverse | table diveduration name</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.0</option>
+        <option name="unit">minutes</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Air Consumed</title>
+        <search>
+          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive "pressure" country="$country$" divesitename="$divesitename$" date="$date$" divenumber="$divenumber$" | reverse |  rex  max_match=0 field=_raw "sample(.*?)depth=\'(?&lt;depth&gt;[\d\.\sm]+)\'"
+| rex  max_match=0 field=_raw "sample(.*?)time=\'(?&lt;time&gt;[0-9:]+)"
+| rex  max_match=0 field=_raw "sample(.*?)pressure=\'(?&lt;pressure&gt;[0-9\.]+)"
+| rex  max_match=0 field=_raw "sample(.*?)temp=\'(?&lt;temp&gt;.*)\'" | rex mode=sed field=_raw "s/[\r\n.]*&lt;sample//g"
+| table number time depth pressure divesitename buddy | eval myuuid=mvrange(0,mvcount(depth))
+ | mvexpand myuuid
+ | eval time=mvindex(time,myuuid)
+ | eval depth=mvindex(depth,myuuid)
+ | eval pressure=mvindex(pressure,myuuid) 
+ |  eval divesitename=mvindex(divesitename,myuuid) | rex mode=sed field=pressure "s/ bar//g" | rex mode=sed field=number "s/'//g" | rex mode=sed field=depth "s/ m//g" | rex mode=sed field=time "s/ min//g" | rex field=time "(?&lt;min&gt;\d+):(?&lt;sec&gt;\d+)" | eval total_sec=min*60+sec | fields - myuuid min sec | stats range(pressure) as pressure_range range(total_sec) as second_range values(divesitename) values(buddy) max(pressure) min(pressure) by number | eval rate_of_air=pressure_range/second_range*60 | sort + number | rename pressure_range as "Air Consumed" "values(divesitename)" as "Dive Site" "rate_of_air" AS "Air Consumption Rate (bars/Minute)" number as "Dive Number" "values(buddy)" as "Dive Buddy" "max(pressure)" as "Starting Pressure" "min(pressure)" as "Ending Pressure" | eval "Total Dive Time (minutes)"=round(second_range/60, 2) | fields - second_range "Dive Number" "Dive Site" "Dive Buddy"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="unit">bar</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Water Temperature</title>
+        <search>
+          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive country="$country$" divesitename="$divesitename$" date="$date$" divenumber="$divenumber$"| reverse | table watertemp | rename watertemp as "Average Temperature (°C)"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="unit">°C</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Air Temperature</title>
+        <search>
+          <query>`subsurfaceindex` sourcetype="subsurface" tag=dive country="$country$" divesitename="$divesitename$" date="$date$" divenumber="$divenumber$"| reverse | table airtemp | rename airtemp as "Air Temperature (°C)"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="unit">°C</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Average Depth (in Meters)</title>
+        <search>
+          <query>`subsurfaceindex` sourcetype="subsurface" tag=dive country="$country$" divesitename="$divesitename$" date="$date$" divenumber="$divenumber$"| reverse | stats avg(meandepth) as mean_depth| rename mean_depth as "Average Depth (in Meters)"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.0</option>
+        <option name="unit">m</option>
+      </single>
+    </panel>
+    <panel>
+      <single>
+        <title>Visibility (in Meters)</title>
+        <search>
+          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive country="$country$" divesitename="$divesitename$" date="$date$" divenumber="$divenumber$"| reverse | eval "Visibility (in Meters)" = case(visibility==1, "Below 2 m", visibility==2, "2-6 m", visibility==3, "6-10 m", visibility==4, "10-20 m", visibility==5, "Greater than 20 m") | fields - visibility visibility_avg</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="drilldown">none</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <chart>
+        <search>
+          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive "pressure" country="$country$" divesitename="$divesitename$" date="$date$" divenumber="$divenumber$" | reverse |  rex  max_match=0 field=_raw "sample(.*?)depth=\'(?&lt;depth&gt;[\d\.\sm]+)\'"
+| rex  max_match=0 field=_raw "sample(.*?)time=\'(?&lt;time&gt;[0-9:]+)"
+| rex  max_match=0 field=_raw "sample(.*?)pressure=\'(?&lt;pressure&gt;[0-9\.]+)"
+| rex  max_match=0 field=_raw "sample(.*?)time=\'(?&lt;testtemp&gt;(.*?)temp=\'[0-9\.]+)" | rex max_match=0 field=testtemp "(?&lt;time2&gt;[0-9:]+)(.*?)temp=\'(?&lt;temp2&gt;.*)"|rex mode=sed field=_raw "s/[\r\n.]*&lt;sample//g"
+| table number time depth pressure divesitename buddy testtemp time2 temp2 watertemp| fields - testtemp | eval myuuid=mvrange(0,mvcount(depth))
+ | mvexpand myuuid
+ | eval time=mvindex(time,myuuid)
+ | eval depth=mvindex(depth,myuuid)
+ | eval pressure=mvindex(pressure,myuuid) 
+ | eval mytempuuid=mvrange(0,mvcount(time2))
+ | mvexpand mytempuuid
+ | eval time3=mvindex(time2,mytempuuid)
+  | eval temp3=mvindex(temp2,mytempuuid)
+  | fields - time2 temp2 mytempuuid
+  | rex mode=sed field=pressure "s/ bar//g" | rex mode=sed field=number "s/'//g" | rex mode=sed field=depth "s/ m//g" | rex mode=sed field=time "s/ min//g" | rex field=time "(?&lt;min&gt;\d+):(?&lt;sec&gt;\d+)" |  rex field=time3 "(?&lt;min3&gt;\d+):(?&lt;sec3&gt;\d+)"| eval total_sec3=min3*60+sec3 | eval total_sec=min*60+sec  | eval depth=depth*-1 | eval temp=case(time==time3,temp3) | sort + time temp | fillnull temp value=0| dedup time depth pressure temp | fields - min3 sec3 watertemp  myuuid min sec buddy divesitename number temp3 time3 total_sec total_sec3 | sort + time | mvcombine temp | eval temp=mvindex(temp,0) | sort + time  | replace 0 with "" | fields time depth pressure temp | filldown temp</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.axisY.scale">linear</option>
+        <option name="charting.axisY2.enabled">1</option>
+        <option name="charting.axisY2.scale">inherit</option>
+        <option name="charting.chart">line</option>
+        <option name="charting.chart.nullValueMode">gaps</option>
+        <option name="charting.chart.overlayFields">pressure,temp</option>
+        <option name="charting.chart.showDataLabels">minmax</option>
+        <option name="charting.drilldown">none</option>
+        <option name="charting.layout.splitSeries">0</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <map>
+        <title>Dive Location</title>
+        <search>
+          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive country="$country$" divesitename="$divesitename$" date="$date$" divenumber="$divenumber$"| reverse | geostats latfield=lat longfield=lon count by divesitename</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+          <sampleRatio>1</sampleRatio>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="mapping.choroplethLayer.colorBins">5</option>
+        <option name="mapping.choroplethLayer.colorMode">auto</option>
+        <option name="mapping.choroplethLayer.maximumColor">0xDB5800</option>
+        <option name="mapping.choroplethLayer.minimumColor">0x2F25BA</option>
+        <option name="mapping.choroplethLayer.neutralPoint">0</option>
+        <option name="mapping.choroplethLayer.shapeOpacity">0.75</option>
+        <option name="mapping.choroplethLayer.showBorder">1</option>
+        <option name="mapping.data.maxClusters">100</option>
+        <option name="mapping.legend.placement">bottomright</option>
+        <option name="mapping.map.center">(0,0)</option>
+        <option name="mapping.map.panning">1</option>
+        <option name="mapping.map.scrollZoom">0</option>
+        <option name="mapping.map.zoom">2</option>
+        <option name="mapping.markerLayer.markerMaxSize">50</option>
+        <option name="mapping.markerLayer.markerMinSize">10</option>
+        <option name="mapping.markerLayer.markerOpacity">0.8</option>
+        <option name="mapping.showTiles">1</option>
+        <option name="mapping.tileLayer.maxZoom">7</option>
+        <option name="mapping.tileLayer.minZoom">0</option>
+        <option name="mapping.tileLayer.tileOpacity">1</option>
+        <option name="mapping.type">marker</option>
+        <option name="trellis.enabled">0</option>
+        <option name="trellis.scales.shared">1</option>
+        <option name="trellis.size">medium</option>
+      </map>
+    </panel>
+  </row>
+</form>
