@@ -1,4 +1,4 @@
-<nav search_view="search" color="#65A637">
+<nav search_view="search" color="#34629d">
   <view name="dive_analysis" />
   <view name="dive_site_analysis" />
   <view name="dive_time_calculator" />

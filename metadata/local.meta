@@ -2,8 +2,8 @@
 access = read : [ * ], write : [ admin ]
 export = system
 owner = admin
-version = 6.6.3
-modtime = 1510407504.932578000
+version = 7.0.0
+modtime = 1510845444.403302000
 
 [eventtypes/Site%20Tag]
 access = read : [ * ], write : [ admin ]
@@ -111,8 +111,8 @@ version = 6.6.3
 modtime = 1510430033.000444000
 
 [views/dive_analysis]
-version = 6.6.3
-modtime = 1510476210.708880000
+version = 7.0.0
+modtime = 1510848443.146741000
 
 [savedsearches/Generate%20Dive%20Site%20ID%20List]
 access = read : [ * ], write : [ admin ]
@@ -171,8 +171,8 @@ version = 6.6.3
 modtime = 1510457378.208535000
 
 [views/dive_site_analysis]
-version = 6.6.3
-modtime = 1510476050.880460000
+version = 7.0.0
+modtime = 1510848490.574034000
 
 [views/air_calculator]
 version = 6.6.3
@@ -205,3 +205,7 @@ export = system
 owner = admin
 version = 6.6.3
 modtime = 1510468866.093643000
+
+[views/dive_time_calculator]
+version = 7.0.0
+modtime = 1510849170.636416000

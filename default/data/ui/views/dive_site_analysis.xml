@@ -1,15 +1,23 @@
 <form>
   <label>Dive Site Analysis</label>
-  <description>This dashboard allows you to obtain an overview of the diving you have done at a specific dive site or many dive sites.</description>
+  <search id="baseSearch">
+    <query>
+      `subsurfaceindex` earliest=-7d@d latest=now sourcetype="subsurface" tag=dive country="$country$" divesitename="$divesitename$"  | table  number time depth country maxdepth pressure divesitename buddy _raw watertemp airtemp visibility_avg lat lon visibility meandepth "Visibility (in Meters)" duration _time | streamstats dc(_time) as distinct_times | head (distinct_times == 1) 
+    </query>
+  </search>
+  <search id="baseSearchSite">
+    <query>
+      `subsurfaceindex` earliest=-7d@d latest=now sourcetype="subsurface" tag=site |  streamstats dc(_time) as distinct_times | head (distinct_times == 1) | table country divesitename  
+    </query>
+  </search>
+  <description>This dashboard displays an overview of the diving you have done at a specific dive site, or at many dive sites.</description>
   <fieldset submitButton="false">
     <input type="dropdown" token="country">
       <label>Country</label>
       <fieldForLabel>country</fieldForLabel>
       <fieldForValue>country</fieldForValue>
-      <search>
-        <query>`subsurfaceindex` tag=site | table country | dedup country</query>
-        <earliest>-24h@h</earliest>
-        <latest>now</latest>
+      <search base="baseSearchSite">
+        <query> dedup country</query>
       </search>
       <default>*</default>
       <choice value="*">All</choice>
@@ -18,10 +26,8 @@
       <label>Dive Site</label>
       <fieldForLabel>divesitename</fieldForLabel>
       <fieldForValue>divesitename</fieldForValue>
-      <search>
-        <query>|inputlookup dive_site_ids.csv | search country="$country$" | dedup divesitename | table divesitename</query>
-        <earliest>-24h@h</earliest>
-        <latest>now</latest>
+      <search base="baseSearchSite">
+        <query> search country="$country$" | dedup divesitename | table divesitename</query>
       </search>
       <choice value="*">All</choice>
       <default>*</default>
@@ -31,11 +37,8 @@
     <panel>
       <single>
         <title>Total Number of Dives</title>
-        <search>
-          <query>`subsurfaceindex`  sourcetype="subsurface" divesitename="$divesitename$"| reverse| eval dive_start_or_end=case(LIKE(_raw, "%dive number%"), "start",LIKE(_raw, "%/dive&gt;%"), "end") | search dive_start_or_end=start country="$country$" | stats count</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
-          <sampleRatio>1</sampleRatio>
+        <search base="baseSearch">
+          <query> stats dc(number)</query>
         </search>
         <option name="drilldown">none</option>
       </single>
@@ -43,10 +46,8 @@
     <panel>
       <single>
         <title>Total Time Under Water</title>
-        <search>
-          <query> `subsurfaceindex` sourcetype="subsurface" duration=* country="$country$" divesitename="$divesitename$"| rex field=duration mode=sed "s/'//g" |  rex field=duration mode=sed "s/ min//g" | reverse | table duration name  | rex field=duration "(?&lt;minutes&gt;\d+):(?&lt;seconds&gt;\d+)" | eval total_seconds=minutes*60+seconds | sort + name   | stats sum(total_seconds)  as "total_hours"  | eval total_hours=round(total_hours/60/60,2) | rename total_hours AS "Total Hours Under Water" | rename name as "Dive Site"</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
+        <search base="baseSearch">
+          <query>| rex field=duration mode=sed "s/'//g" |  rex field=duration mode=sed "s/ min//g" | reverse | table duration name  | rex field=duration "(?&lt;minutes&gt;\d+):(?&lt;seconds&gt;\d+)" | eval total_seconds=minutes*60+seconds | sort + name   | stats sum(total_seconds)  as "total_hours"  | eval total_hours=round(total_hours/60/60,2) | rename total_hours AS "Total Hours Under Water" | rename name as "Dive Site"</query>
         </search>
         <option name="drilldown">none</option>
         <option name="numberPrecision">0.0</option>
@@ -58,10 +59,8 @@
     <panel>
       <single>
         <title>Average Water Temperature</title>
-        <search>
-          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive country="$country$" divesitename="$divesitename$"| reverse | stats avg(watertemp) as "Average Temperature (°C)"</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
+        <search base="baseSearch">
+          <query> reverse | stats avg(watertemp) as "Average Temperature (°C)"</query>
         </search>
         <option name="drilldown">none</option>
         <option name="unit">°C</option>
@@ -70,10 +69,8 @@
     <panel>
       <single>
         <title>Average Air Temperature</title>
-        <search>
-          <query>`subsurfaceindex` sourcetype="subsurface" tag=dive country="$country$" divesitename="$divesitename$"| reverse | stats avg(airtemp) as "Minimum Air Temperature (°C)"</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
+        <search base="baseSearch">
+          <query> reverse | stats avg(airtemp) as "Minimum Air Temperature (°C)"</query>
         </search>
         <option name="drilldown">none</option>
         <option name="unit">°C</option>
@@ -81,11 +78,9 @@
     </panel>
     <panel>
       <single>
-        <title>Maximum Depth (in Meters)</title>
-        <search>
-          <query>`subsurfaceindex` sourcetype="subsurface" depth=* country="$country$" divesitename="$divesitename$"| reverse | stats max(maxdepth) as max_depth | rename max_depth as "Max Depth (in Meters)"</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
+        <title>Maximum Depth</title>
+        <search base="baseSearch">
+          <query> reverse | stats max(maxdepth) as max_depth | rename max_depth as "Max Depth (in Meters)"</query>
         </search>
         <option name="drilldown">none</option>
         <option name="numberPrecision">0.0</option>
@@ -94,11 +89,9 @@
     </panel>
     <panel>
       <single>
-        <title>Average Depth (in Meters)</title>
-        <search>
-          <query>`subsurfaceindex` sourcetype="subsurface" depth=* country="$country$" divesitename="$divesitename$"| reverse | stats avg(meandepth) as mean_depth| rename mean_depth as "Average Depth (in Meters)"</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
+        <title>Average Depth</title>
+        <search base="baseSearch">
+          <query> reverse | stats avg(meandepth) as mean_depth| rename mean_depth as "Average Depth (in Meters)"</query>
         </search>
         <option name="drilldown">none</option>
         <option name="numberPrecision">0.0</option>
@@ -107,12 +100,9 @@
     </panel>
     <panel>
       <single>
-        <title>Average Visibility (in Meters)</title>
-        <search>
-          <query>`subsurfaceindex`  sourcetype="subsurface" visibility=* country="$country$" divesitename="$divesitename$"| reverse | rex mode=sed field=visibility "s/'//g" | stats avg(visibility) as visibility_avg | eval Visibility=round(visibility_avg,0) | eval "Visibility (in Meters)" = case(Visibility==1, "Below 2 m", Visibility==2, "2-6 m", Visibility==3, "6-10 m", Visibility==4, "10-20 m", Visibility==5, "Greater than 20 m") | fields - Visibility visibility_avg</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
-          <sampleRatio>1</sampleRatio>
+        <title>Average Visibility</title>
+        <search base="baseSearch">
+          <query> reverse | rex mode=sed field=visibility "s/'//g" | stats avg(visibility) as visibility_avg | eval Visibility=round(visibility_avg,0) | eval "Visibility (in Meters)" = case(Visibility==1, "Below 2 m", Visibility==2, "2-6 m", Visibility==3, "6-10 m", Visibility==4, "10-20 m", Visibility==5, "Greater than 20 m") | fields - Visibility visibility_avg</query>
         </search>
         <option name="drilldown">none</option>
       </single>
@@ -122,8 +112,8 @@
     <panel>
       <table>
         <title>Air Consumption Details</title>
-        <search>
-          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive "pressure" country="$country$" divesitename="$divesitename$" | reverse |  rex  max_match=0 field=_raw "sample(.*?)depth=\'(?&lt;depth&gt;[\d\.\sm]+)\'"
+        <search base="baseSearch">
+          <query> reverse |  rex  max_match=0 field=_raw "sample(.*?)depth=\'(?&lt;depth&gt;[\d\.\sm]+)\'"
 | rex  max_match=0 field=_raw "sample(.*?)time=\'(?&lt;time&gt;[0-9:]+)"
 | rex  max_match=0 field=_raw "sample(.*?)pressure=\'(?&lt;pressure&gt;[0-9\.]+)"
 | rex  max_match=0 field=_raw "sample(.*?)temp=\'(?&lt;temp&gt;.*)\'" | rex mode=sed field=_raw "s/[\r\n.]*&lt;sample//g"
@@ -132,9 +122,7 @@
  | eval time=mvindex(time,myuuid)
  | eval depth=mvindex(depth,myuuid)
  | eval pressure=mvindex(pressure,myuuid) 
- |  eval divesitename=mvindex(divesitename,myuuid) | rex mode=sed field=pressure "s/ bar//g" | rex mode=sed field=number "s/'//g" | rex mode=sed field=depth "s/ m//g" | rex mode=sed field=time "s/ min//g" | rex field=time "(?&lt;min&gt;\d+):(?&lt;sec&gt;\d+)" | eval total_sec=min*60+sec | fields - myuuid min sec | stats range(pressure) as pressure_range range(total_sec) as second_range values(divesitename) values(buddy) max(pressure) min(pressure) by number | eval rate_of_air=pressure_range/second_range*60 | sort + number | rename pressure_range as "Air Consumed" "values(divesitename)" as "Dive Site" "rate_of_air" AS "Air Consumption Rate (bars/Minute)" number as "Dive Number" "values(buddy)" as "Dive Buddy" "max(pressure)" as "Starting Pressure" "min(pressure)" as "Ending Pressure" | eval "Total Dive Time (minutes)"=round(second_range/60, 2) | fields - second_range "Dive Buddy" "Dive Site"</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
+ |  eval divesitename=mvindex(divesitename,myuuid) |  replace "'1.013 bar'" with "" in pressure | rex mode=sed field=pressure "s/ bar//g" | rex mode=sed field=number "s/'//g" | rex mode=sed field=depth "s/ m//g" | rex mode=sed field=time "s/ min//g" | rex field=time "(?&lt;min&gt;\d+):(?&lt;sec&gt;\d+)" | eval total_sec=min*60+sec | fields - myuuid min sec | stats range(pressure) as pressure_range range(total_sec) as second_range values(divesitename) values(buddy) max(pressure) min(pressure) by number | eval rate_of_air=pressure_range/second_range*60 | sort + number | rename pressure_range as "Air Consumed" "values(divesitename)" as "Dive Site" "rate_of_air" AS "Air Consumption Rate (bars/Minute)" number as "Dive Number" "values(buddy)" as "Dive Buddy" "max(pressure)" as "Starting Pressure" "min(pressure)" as "Ending Pressure" | eval "Total Dive Time (minutes)"=round(second_range/60, 2) | fields - second_range "Dive Buddy" "Dive Site"</query>
         </search>
         <option name="count">8</option>
         <option name="drilldown">none</option>
@@ -143,11 +131,8 @@
     <panel>
       <map>
         <title>Dive Locations</title>
-        <search>
-          <query>`subsurfaceindex`  sourcetype="subsurface" lat=* country="$country$" divesitename="$divesitename$"| reverse | geostats latfield=lat longfield=lon count by divesitename</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
-          <sampleRatio>1</sampleRatio>
+        <search base="baseSearch">
+          <query> reverse | geostats latfield=lat longfield=lon count by divesitename</query>
         </search>
         <option name="drilldown">none</option>
         <option name="mapping.choroplethLayer.colorBins">5</option>
@@ -181,11 +166,8 @@
     <panel>
       <table>
         <title>Hours Under Water (by Dive Site)</title>
-        <search>
-          <query> `subsurfaceindex`  sourcetype="subsurface" duration=* country="$country$" divesitename="$divesitename$"| rex field=duration mode=sed "s/'//g" |  rex field=duration mode=sed "s/ min//g" | reverse | table duration divesitename  | rex field=duration "(?&lt;minutes&gt;\d+):(?&lt;seconds&gt;\d+)" | eval total_seconds=minutes*60+seconds | sort + divesitename   | stats sum(total_seconds)  as "total_hours" by divesitename  | eval total_hours=round(total_hours/60/60,2) | rename total_hours AS "Total Hours Under Water" | rename divesitename as "Dive Site"</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
-          <sampleRatio>1</sampleRatio>
+        <search base="baseSearch">
+          <query> rex field=duration mode=sed "s/'//g" |  rex field=duration mode=sed "s/ min//g" | reverse | table duration divesitename  | rex field=duration "(?&lt;minutes&gt;\d+):(?&lt;seconds&gt;\d+)" | eval total_seconds=minutes*60+seconds | sort + divesitename   | stats sum(total_seconds)  as "total_hours" by divesitename  | eval total_hours=round(total_hours/60/60,2) | rename total_hours AS "Total Hours Under Water" | rename divesitename as "Dive Site"</query>
         </search>
         <option name="count">20</option>
         <option name="dataOverlayMode">none</option>
@@ -199,10 +181,8 @@
     <panel>
       <table>
         <title>Average Visibility (by Dive Site)</title>
-        <search>
-          <query>`subsurfaceindex`  sourcetype="subsurface" visibility=* country="$country$" divesitename="$divesitename$"| reverse | rex mode=sed field=visibility "s/'//g" | stats avg(visibility) as visibility_avg by divesitename | eval Visibility=round(visibility_avg,0) | eval "Average Visibility (in Meters)" = case(Visibility==1, "Below 2 m", Visibility==2, "2-6 m", Visibility==3, "6-10 m", Visibility==4, "10-20 m", Visibility==5, "Greater than 20 m") | fields - Visibility visibility_avg | rename ndivesitenameame as "Dive Site"</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
+        <search base="baseSearch">
+          <query> reverse | rex mode=sed field=visibility "s/'//g" | stats avg(visibility) as visibility_avg by divesitename | eval Visibility=round(visibility_avg,0) | eval "Average Visibility (in Meters)" = case(Visibility==1, "Below 2 m", Visibility==2, "2-6 m", Visibility==3, "6-10 m", Visibility==4, "10-20 m", Visibility==5, "Greater than 20 m") | fields - Visibility visibility_avg | rename ndivesitenameame as "Dive Site"</query>
         </search>
         <option name="drilldown">none</option>
       </table>
@@ -212,11 +192,8 @@
     <panel>
       <single>
         <title>Maximum Water Temperature</title>
-        <search>
-          <query>`subsurfaceindex` sourcetype="subsurface" temp=* country="$country$" divesitename="$divesitename$"| reverse | stats max(watertemp) as "Maximum Temperature (°C)"</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
-          <sampleRatio>1</sampleRatio>
+        <search base="baseSearch">
+          <query> reverse | stats max(watertemp) as "Maximum Temperature (°C)"</query>
         </search>
         <option name="drilldown">none</option>
         <option name="unit">°C</option>
@@ -225,10 +202,8 @@
     <panel>
       <single>
         <title>Minimum Water Temperature</title>
-        <search>
-          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive country="$country$" divesitename="$divesitename$"| reverse | stats min(watertemp) as "Minimum Water Temperature (°C)"</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
+        <search base="baseSearch">
+          <query> reverse | stats min(watertemp) as "Minimum Water Temperature (°C)"</query>
         </search>
         <option name="drilldown">none</option>
         <option name="unit">°C</option>
@@ -239,10 +214,8 @@
     <panel>
       <single>
         <title>Maximum Air Temperature</title>
-        <search>
-          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive country="$country$" divesitename="$divesitename$"| reverse | stats max(airtemp) as "Maximum Air Temperature (°C)"</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
+        <search base="baseSearch">
+          <query> reverse | stats max(airtemp) as "Maximum Air Temperature (°C)"</query>
         </search>
         <option name="drilldown">none</option>
         <option name="unit">°C</option>
@@ -251,10 +224,8 @@
     <panel>
       <single>
         <title>Minimum Air Temperature</title>
-        <search>
-          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive country="$country$" divesitename="$divesitename$"| reverse | stats min(airtemp) as "Minimum Air Temperature (°C)"</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
+        <search base="baseSearch">
+          <query> reverse | stats min(airtemp) as "Minimum Air Temperature (°C)"</query>
         </search>
         <option name="drilldown">none</option>
         <option name="unit">°C</option>

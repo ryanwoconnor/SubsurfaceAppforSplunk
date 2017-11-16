@@ -1,14 +1,23 @@
 <form>
   <label>Air Calculator</label>
+  <search id="baseSearch">
+    <query>
+      `subsurfaceindex` earliest=-7d@d latest=now sourcetype="subsurface" tag=dive country="$country$" divesitename="$divesitename$"  | table  number time depth country maxdepth pressure divesitename buddy _raw watertemp airtemp visibility_avg lat lon visibility meandepth "Visibility (in Meters)" duration _time | streamstats dc(_time) as distinct_times | head (distinct_times == 1) 
+    </query>
+  </search>
+  <search id="baseSearchSite">
+    <query>
+      `subsurfaceindex` earliest=-7d@d latest=now sourcetype="subsurface" tag=site |  streamstats dc(_time) as distinct_times | head (distinct_times == 1) | table country divesitename  
+    </query>
+  </search>
+  <description>This calculator can be used to estimate how much time you can spend at a given dive site. This is purely theoretical so Subsurface, Splunk, and Ryan O'Connor are not responsible for anything that may go wrong during your dive. This dashboard also assumes a reserve amount of 50 bar/500 psi.</description>
   <fieldset submitButton="false">
     <input type="dropdown" token="country">
       <label>Country</label>
       <fieldForLabel>country</fieldForLabel>
       <fieldForValue>country</fieldForValue>
-      <search>
-        <query>`subsurfaceindex` tag=site | table country | dedup country</query>
-        <earliest>-24h@h</earliest>
-        <latest>now</latest>
+      <search base="baseSearchSite">
+        <query> dedup country</query>
       </search>
       <default>Madagascar</default>
     </input>
@@ -16,19 +25,18 @@
       <label>Dive Site</label>
       <fieldForLabel>divesitename</fieldForLabel>
       <fieldForValue>divesitename</fieldForValue>
-      <search>
-        <query>|inputlookup dive_site_ids.csv | search country="$country$" | dedup divesitename | table divesitename</query>
-        <earliest>-24h@h</earliest>
-        <latest>now</latest>
+      <search base="baseSearchSite">
+        <query> search country="$country$" | dedup divesitename | table divesitename</query>
       </search>
       <choice value="*">All</choice>
     </input>
   </fieldset>
   <row>
     <panel>
+      <title>Information on past dives at this site</title>
       <chart>
-        <search>
-          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive "pressure" country="$country$" divesitename="$divesitename$" | reverse |  rex  max_match=0 field=_raw "sample(.*?)depth=\'(?&lt;depth&gt;[\d\.\sm]+)\'"
+        <search base="baseSearch">
+          <query> reverse |  rex  max_match=0 field=_raw "sample(.*?)depth=\'(?&lt;depth&gt;[\d\.\sm]+)\'"
 | rex  max_match=0 field=_raw "sample(.*?)time=\'(?&lt;time&gt;[0-9:]+)"
 | rex  max_match=0 field=_raw "sample(.*?)pressure=\'(?&lt;pressure&gt;[0-9\.]+)"
 | rex  max_match=0 field=_raw "sample(.*?)temp=\'(?&lt;temp&gt;.*)\'" | rex mode=sed field=_raw "s/[\r\n.]*&lt;sample//g"
@@ -38,8 +46,6 @@
  | eval depth=mvindex(depth,myuuid)
  | eval pressure=mvindex(pressure,myuuid) 
  |  eval divesitename=mvindex(divesitename,myuuid) | rex mode=sed field=pressure "s/ bar//g" | rex mode=sed field=number "s/'//g" | rex mode=sed field=depth "s/ m//g" | rex mode=sed field=time "s/ min//g" | rex field=time "(?&lt;min&gt;\d+):(?&lt;sec&gt;\d+)" | eval total_sec=min*60+sec | fields - myuuid min sec | stats range(pressure) as pressure_range range(total_sec) as second_range values(divesitename) values(buddy) max(pressure) min(pressure) by number | eval rate_of_air=pressure_range/second_range*60 | sort + number | rename pressure_range as "Air Consumed" "values(divesitename)" as "Dive Site" "rate_of_air" AS "Air Consumption Rate (bars/Minute)" number as "Dive Number" "values(buddy)" as "Dive Buddy" "max(pressure)" as "Starting Pressure" "min(pressure)" as "Ending Pressure" | eval "Total Dive Time (minutes)"=round(second_range/60, 2) | fields - second_range "Dive Buddy" "Dive Site" | fields - "Starting Pressure" "Ending Pressure"</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
         </search>
         <option name="charting.chart">column</option>
         <option name="charting.drilldown">none</option>
@@ -50,8 +56,8 @@
     <panel>
       <single>
         <title>You tend to average the following Air Consumption Rate at this dive site:</title>
-        <search>
-          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive "pressure" country="$country$" divesitename="$divesitename$" | reverse |  rex  max_match=0 field=_raw "sample(.*?)depth=\'(?&lt;depth&gt;[\d\.\sm]+)\'"
+        <search base="baseSearch">
+          <query> reverse |  rex  max_match=0 field=_raw "sample(.*?)depth=\'(?&lt;depth&gt;[\d\.\sm]+)\'"
 | rex  max_match=0 field=_raw "sample(.*?)time=\'(?&lt;time&gt;[0-9:]+)"
 | rex  max_match=0 field=_raw "sample(.*?)pressure=\'(?&lt;pressure&gt;[0-9\.]+)"
 | rex  max_match=0 field=_raw "sample(.*?)temp=\'(?&lt;temp&gt;.*)\'" | rex mode=sed field=_raw "s/[\r\n.]*&lt;sample//g"
@@ -61,8 +67,6 @@
  | eval depth=mvindex(depth,myuuid)
  | eval pressure=mvindex(pressure,myuuid) 
  |  eval divesitename=mvindex(divesitename,myuuid) | rex mode=sed field=pressure "s/ bar//g" | rex mode=sed field=number "s/'//g" | rex mode=sed field=depth "s/ m//g" | rex mode=sed field=time "s/ min//g" | rex field=time "(?&lt;min&gt;\d+):(?&lt;sec&gt;\d+)" | eval total_sec=min*60+sec | fields - myuuid min sec | stats range(pressure) as pressure_range range(total_sec) as second_range values(divesitename) values(buddy) max(pressure) min(pressure) by number | eval rate_of_air=pressure_range/second_range*60 | sort + number | rename  "values(divesitename)" as "Dive Site" "rate_of_air" AS "Air Consumption Rate (bars/Minute)" number as "Dive Number" "values(buddy)" as "Dive Buddy" "max(pressure)" as "Starting Pressure" "min(pressure)" as "Ending Pressure" | eval "total_min"=round(second_range/60, 2) | fields - second_range "Dive Buddy" "Dive Site" |stats sum(pressure_range) as bars sum(total_min) as minutes | eval avg_pressure=bars/minutes | fields - bars minutes</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
         </search>
         <option name="drilldown">none</option>
         <option name="numberPrecision">0.00</option>
@@ -74,8 +78,8 @@
     <panel>
       <single>
         <title>You should plan for a dive no longer than the following:</title>
-        <search>
-          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive "pressure" country="$country$" divesitename="$divesitename$" | reverse |  rex  max_match=0 field=_raw "sample(.*?)depth=\'(?&lt;depth&gt;[\d\.\sm]+)\'"
+        <search base="baseSearch">
+          <query> reverse |  rex  max_match=0 field=_raw "sample(.*?)depth=\'(?&lt;depth&gt;[\d\.\sm]+)\'"
 | rex  max_match=0 field=_raw "sample(.*?)time=\'(?&lt;time&gt;[0-9:]+)"
 | rex  max_match=0 field=_raw "sample(.*?)pressure=\'(?&lt;pressure&gt;[0-9\.]+)"
 | rex  max_match=0 field=_raw "sample(.*?)temp=\'(?&lt;temp&gt;.*)\'" | rex mode=sed field=_raw "s/[\r\n.]*&lt;sample//g"
@@ -85,8 +89,6 @@
  | eval depth=mvindex(depth,myuuid)
  | eval pressure=mvindex(pressure,myuuid) 
  |  eval divesitename=mvindex(divesitename,myuuid) | rex mode=sed field=pressure "s/ bar//g" | rex mode=sed field=number "s/'//g" | rex mode=sed field=depth "s/ m//g" | rex mode=sed field=time "s/ min//g" | rex field=time "(?&lt;min&gt;\d+):(?&lt;sec&gt;\d+)" | eval total_sec=min*60+sec | fields - myuuid min sec | stats range(pressure) as pressure_range range(total_sec) as second_range values(divesitename) values(buddy) max(pressure) min(pressure) by number | eval rate_of_air=pressure_range/second_range*60 | sort + number | rename  "values(divesitename)" as "Dive Site" "rate_of_air" AS "Air Consumption Rate (bars/Minute)" number as "Dive Number" "values(buddy)" as "Dive Buddy" "max(pressure)" as "Starting Pressure" "min(pressure)" as "Ending Pressure" | eval "total_min"=round(second_range/60, 2) | fields - second_range "Dive Buddy" "Dive Site" |stats sum(pressure_range) as bars sum(total_min) as minutes | eval avg_pressure=bars/minutes | fields - bars minutes | eval recommended_dive_length=150/avg_pressure | fields - avg_pressure</query>
-          <earliest>-24h@h</earliest>
-          <latest>now</latest>
         </search>
         <option name="drilldown">none</option>
         <option name="numberPrecision">0.00</option>
