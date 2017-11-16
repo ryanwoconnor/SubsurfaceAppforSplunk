@@ -1,0 +1,97 @@
+<form>
+  <label>Air Calculator</label>
+  <fieldset submitButton="false">
+    <input type="dropdown" token="country">
+      <label>Country</label>
+      <fieldForLabel>country</fieldForLabel>
+      <fieldForValue>country</fieldForValue>
+      <search>
+        <query>`subsurfaceindex` tag=site | table country | dedup country</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <default>Madagascar</default>
+    </input>
+    <input type="dropdown" token="divesitename">
+      <label>Dive Site</label>
+      <fieldForLabel>divesitename</fieldForLabel>
+      <fieldForValue>divesitename</fieldForValue>
+      <search>
+        <query>|inputlookup dive_site_ids.csv | search country="$country$" | dedup divesitename | table divesitename</query>
+        <earliest>-24h@h</earliest>
+        <latest>now</latest>
+      </search>
+      <choice value="*">All</choice>
+    </input>
+  </fieldset>
+  <row>
+    <panel>
+      <chart>
+        <search>
+          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive "pressure" country="$country$" divesitename="$divesitename$" | reverse |  rex  max_match=0 field=_raw "sample(.*?)depth=\'(?&lt;depth&gt;[\d\.\sm]+)\'"
+| rex  max_match=0 field=_raw "sample(.*?)time=\'(?&lt;time&gt;[0-9:]+)"
+| rex  max_match=0 field=_raw "sample(.*?)pressure=\'(?&lt;pressure&gt;[0-9\.]+)"
+| rex  max_match=0 field=_raw "sample(.*?)temp=\'(?&lt;temp&gt;.*)\'" | rex mode=sed field=_raw "s/[\r\n.]*&lt;sample//g"
+| table number time depth pressure divesitename buddy | eval myuuid=mvrange(0,mvcount(depth))
+ | mvexpand myuuid
+ | eval time=mvindex(time,myuuid)
+ | eval depth=mvindex(depth,myuuid)
+ | eval pressure=mvindex(pressure,myuuid) 
+ |  eval divesitename=mvindex(divesitename,myuuid) | rex mode=sed field=pressure "s/ bar//g" | rex mode=sed field=number "s/'//g" | rex mode=sed field=depth "s/ m//g" | rex mode=sed field=time "s/ min//g" | rex field=time "(?&lt;min&gt;\d+):(?&lt;sec&gt;\d+)" | eval total_sec=min*60+sec | fields - myuuid min sec | stats range(pressure) as pressure_range range(total_sec) as second_range values(divesitename) values(buddy) max(pressure) min(pressure) by number | eval rate_of_air=pressure_range/second_range*60 | sort + number | rename pressure_range as "Air Consumed" "values(divesitename)" as "Dive Site" "rate_of_air" AS "Air Consumption Rate (bars/Minute)" number as "Dive Number" "values(buddy)" as "Dive Buddy" "max(pressure)" as "Starting Pressure" "min(pressure)" as "Ending Pressure" | eval "Total Dive Time (minutes)"=round(second_range/60, 2) | fields - second_range "Dive Buddy" "Dive Site" | fields - "Starting Pressure" "Ending Pressure"</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="charting.chart">column</option>
+        <option name="charting.drilldown">none</option>
+      </chart>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <title>You tend to average the following Air Consumption Rate at this dive site:</title>
+        <search>
+          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive "pressure" country="$country$" divesitename="$divesitename$" | reverse |  rex  max_match=0 field=_raw "sample(.*?)depth=\'(?&lt;depth&gt;[\d\.\sm]+)\'"
+| rex  max_match=0 field=_raw "sample(.*?)time=\'(?&lt;time&gt;[0-9:]+)"
+| rex  max_match=0 field=_raw "sample(.*?)pressure=\'(?&lt;pressure&gt;[0-9\.]+)"
+| rex  max_match=0 field=_raw "sample(.*?)temp=\'(?&lt;temp&gt;.*)\'" | rex mode=sed field=_raw "s/[\r\n.]*&lt;sample//g"
+| table number time depth pressure divesitename buddy | eval myuuid=mvrange(0,mvcount(depth))
+ | mvexpand myuuid
+ | eval time=mvindex(time,myuuid)
+ | eval depth=mvindex(depth,myuuid)
+ | eval pressure=mvindex(pressure,myuuid) 
+ |  eval divesitename=mvindex(divesitename,myuuid) | rex mode=sed field=pressure "s/ bar//g" | rex mode=sed field=number "s/'//g" | rex mode=sed field=depth "s/ m//g" | rex mode=sed field=time "s/ min//g" | rex field=time "(?&lt;min&gt;\d+):(?&lt;sec&gt;\d+)" | eval total_sec=min*60+sec | fields - myuuid min sec | stats range(pressure) as pressure_range range(total_sec) as second_range values(divesitename) values(buddy) max(pressure) min(pressure) by number | eval rate_of_air=pressure_range/second_range*60 | sort + number | rename  "values(divesitename)" as "Dive Site" "rate_of_air" AS "Air Consumption Rate (bars/Minute)" number as "Dive Number" "values(buddy)" as "Dive Buddy" "max(pressure)" as "Starting Pressure" "min(pressure)" as "Ending Pressure" | eval "total_min"=round(second_range/60, 2) | fields - second_range "Dive Buddy" "Dive Site" |stats sum(pressure_range) as bars sum(total_min) as minutes | eval avg_pressure=bars/minutes | fields - bars minutes</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="unit">bars/minute</option>
+      </single>
+    </panel>
+  </row>
+  <row>
+    <panel>
+      <single>
+        <title>You should plan for a dive no longer than the following:</title>
+        <search>
+          <query>`subsurfaceindex`  sourcetype="subsurface" tag=dive "pressure" country="$country$" divesitename="$divesitename$" | reverse |  rex  max_match=0 field=_raw "sample(.*?)depth=\'(?&lt;depth&gt;[\d\.\sm]+)\'"
+| rex  max_match=0 field=_raw "sample(.*?)time=\'(?&lt;time&gt;[0-9:]+)"
+| rex  max_match=0 field=_raw "sample(.*?)pressure=\'(?&lt;pressure&gt;[0-9\.]+)"
+| rex  max_match=0 field=_raw "sample(.*?)temp=\'(?&lt;temp&gt;.*)\'" | rex mode=sed field=_raw "s/[\r\n.]*&lt;sample//g"
+| table number time depth pressure divesitename buddy | eval myuuid=mvrange(0,mvcount(depth))
+ | mvexpand myuuid
+ | eval time=mvindex(time,myuuid)
+ | eval depth=mvindex(depth,myuuid)
+ | eval pressure=mvindex(pressure,myuuid) 
+ |  eval divesitename=mvindex(divesitename,myuuid) | rex mode=sed field=pressure "s/ bar//g" | rex mode=sed field=number "s/'//g" | rex mode=sed field=depth "s/ m//g" | rex mode=sed field=time "s/ min//g" | rex field=time "(?&lt;min&gt;\d+):(?&lt;sec&gt;\d+)" | eval total_sec=min*60+sec | fields - myuuid min sec | stats range(pressure) as pressure_range range(total_sec) as second_range values(divesitename) values(buddy) max(pressure) min(pressure) by number | eval rate_of_air=pressure_range/second_range*60 | sort + number | rename  "values(divesitename)" as "Dive Site" "rate_of_air" AS "Air Consumption Rate (bars/Minute)" number as "Dive Number" "values(buddy)" as "Dive Buddy" "max(pressure)" as "Starting Pressure" "min(pressure)" as "Ending Pressure" | eval "total_min"=round(second_range/60, 2) | fields - second_range "Dive Buddy" "Dive Site" |stats sum(pressure_range) as bars sum(total_min) as minutes | eval avg_pressure=bars/minutes | fields - bars minutes | eval recommended_dive_length=150/avg_pressure | fields - avg_pressure</query>
+          <earliest>-24h@h</earliest>
+          <latest>now</latest>
+        </search>
+        <option name="drilldown">none</option>
+        <option name="numberPrecision">0.00</option>
+        <option name="unit">minutes</option>
+      </single>
+    </panel>
+  </row>
+</form>
