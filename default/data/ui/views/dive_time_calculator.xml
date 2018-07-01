@@ -2,12 +2,12 @@
   <label>Air Calculator</label>
   <search id="baseSearch">
     <query>
-      `subsurfaceindex` earliest=-7d@d latest=now sourcetype="subsurface" tag=dive country="$country$" divesitename="$divesitename$"  | table  number time depth country maxdepth pressure divesitename buddy _raw watertemp airtemp visibility_avg lat lon visibility meandepth "Visibility (in Meters)" duration _time | streamstats dc(_time) as distinct_times | head (distinct_times == 1) 
+      `subsurfaceindex` earliest=-365d@d latest=now sourcetype="subsurface" tag=dive | join type=outer divesiteid [search `subsurfaceindex` earliest=-365d@d tag=site | table divesiteid gps lat lon country divesitename _raw]  | search country="$country$" divesitename="$divesitename$"  | table  number time depth country maxdepth pressure divesitename buddy _raw watertemp airtemp visibility_avg lat lon visibility meandepth "Visibility (in Meters)" duration _time | streamstats dc(_time) as distinct_times | head (distinct_times == 1) 
     </query>
   </search>
   <search id="baseSearchSite">
     <query>
-      `subsurfaceindex` earliest=-7d@d latest=now sourcetype="subsurface" tag=site |  streamstats dc(_time) as distinct_times | head (distinct_times == 1) | table country divesitename  
+      `subsurfaceindex` earliest=-365d@d latest=now sourcetype="subsurface" tag=site |  streamstats dc(_time) as distinct_times | head (distinct_times == 1) | table country divesitename  
     </query>
   </search>
   <description>This calculator can be used to estimate how much time you can spend at a given dive site. This is purely theoretical so Subsurface, Splunk, and Ryan O'Connor are not responsible for anything that may go wrong during your dive. This dashboard also assumes a reserve amount of 50 bar/500 psi.</description>
